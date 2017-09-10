@@ -1,0 +1,7 @@
+\BOOKMARK [1][-]{section.1}{Compilation}{}% 1
+\BOOKMARK [1][-]{section.2}{Implementation}{}% 2
+\BOOKMARK [2][-]{subsection.2.1}{The Model}{section.2}% 3
+\BOOKMARK [2][-]{subsection.2.2}{Timestep Length and Elapsed Duration \(N \046 dt\)}{section.2}% 4
+\BOOKMARK [2][-]{subsection.2.3}{Polynomial Fitting and MPC Preprocessing}{section.2}% 5
+\BOOKMARK [2][-]{subsection.2.4}{Model Predictive Control with Latency}{section.2}% 6
+\BOOKMARK [1][-]{section.3}{Simulation}{}% 7
