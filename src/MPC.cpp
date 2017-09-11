@@ -56,6 +56,9 @@ int eyaw_start = cte_start + N;
 int acc_start = eyaw_start + N;
 int steer_start = acc_start + N - 1;
 
+int acc_constraint = acc_start;
+int steer_constraint = acc_constraint + 1;
+
 // This value assumes the model presented in the classroom is used.
 //
 // It was obtained by measuring the radius formed by running the vehicle in the
@@ -85,21 +88,21 @@ class FG_eval {
 
     //Cost function - States
     for(int t=0; t<N; t++){
-      fg[0] += 10*CppAD::pow(vars[v_start + t] - 50 * MPC::mph_to_meters_per_second, 2); //Speed
-      fg[0] += 2000*CppAD::pow(vars[cte_start + t], 2); //Distance to center
-      fg[0] += 500*CppAD::pow(vars[eyaw_start + t], 2); //Angle
+      fg[0] += 5*CppAD::pow(vars[v_start + t] - 50 * MPC::mph_to_meters_per_second, 2); //Speed
+      fg[0] += 10*CppAD::pow(vars[cte_start + t], 2); //Distance to center
+      fg[0] += 250*CppAD::pow(vars[eyaw_start + t], 2); //Angle
     }
 
     //Cost function - actuator values
     for(int t=0; t<(N - 1); t++){
-      fg[0] += 5 * CppAD::pow(vars[acc_start + t] - 1, 2); //Low acceleration
-      fg[0] += 50 * CppAD::pow(vars[steer_start + t], 2); //Low steering values
+      fg[0] += 5 * CppAD::pow(vars[acc_start + t], 2); //Low acceleration
+      fg[0] += 15 * CppAD::pow(vars[steer_start + t], 2); //Low steering values
     }
 
     //Cost function - actuator differences
     for(int t=1; t<(N - 1); t++){
-      fg[0] += 1 * CppAD::pow(vars[acc_start + t] - vars[acc_start + t - 1], 2); //Smoother acceleration
-      fg[0] += 10 * CppAD::pow(vars[steer_start + t] - vars[steer_start + t - 1], 2); //Smoother steering
+      fg[0] += 10 * CppAD::pow(vars[acc_start + t] - vars[acc_start + t - 1], 2); //Smoother acceleration
+      fg[0] += 75000 * CppAD::pow(vars[steer_start + t] - vars[steer_start + t - 1], 2); //Smoother steering
     }
 
     //Constraints
@@ -109,6 +112,8 @@ class FG_eval {
     fg[yaw_start + 1] = vars[yaw_start];
     fg[cte_start + 1] = vars[cte_start];
     fg[eyaw_start + 1] = vars[eyaw_start];
+    fg[acc_constraint + 1] = vars[acc_start];
+    fg[steer_constraint + 1] = vars[steer_start];
 
     for(int t=1; t<N; t++){
       //State at time t + 1
@@ -134,7 +139,7 @@ class FG_eval {
       //Polynomial evaluations
       AD<double> f0 = polyeval(coeffs, x0);
       AD<double> f0_derivative = polyeval_derivative(coeffs, x0);
-      AD<double> yaw_line = CppAD::atan(coeffs[1]);
+      AD<double> yaw_line = CppAD::atan(f0_derivative);
 
       //Constraints between states
       fg[x_start + t + 1] = x1 - (x0 + v0 * CppAD::cos(yaw0) * dt);
@@ -158,22 +163,18 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   size_t i;
   typedef CPPAD_TESTVECTOR(double) Dvector;
 
-  double x0 = state[0];
-  double y0 = state[1];
-  double v0 = state[2];
-  double yaw0 = state[3];
 
-  //Single update before optimization due to latency
-  double x = x0 + v0 * cos(yaw0) * 0.1;
-  double y = y0 + v0 * sin(yaw0) * 0.1;
-  double v = v0 + lastAccelerator * 0.1;
-  double yaw = yaw0 + v0 / Lf * lastSteering * 0.1;
+  double x = state[0];
+  double y = state[1];
+  double v = state[2];
+  double yaw = state[3];
   double cte = polyeval_double(coeffs, x) - y;
   double eyaw = atan(polyeval_derivative_double(coeffs, x)) - yaw;
 
+
   size_t n_vars = N*(numberOfStateVariables + numberOfActuatorVariables) - numberOfActuatorVariables;
 
-  size_t n_constraints = N*numberOfStateVariables;
+  size_t n_constraints = N*numberOfStateVariables + 2;
 
   // Initial value of the independent variables.
   // SHOULD BE 0 besides initial state.
@@ -188,6 +189,8 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   vars[yaw_start] = yaw;
   vars[cte_start] = cte;
   vars[eyaw_start] = eyaw;
+  vars[acc_start] = lastAccelerator; //Adding this so that the cost function accounts for the derivative of actuator value (including present value)
+  vars[steer_start] = lastSteering; //Adding this so that the cost function accounts for the derivative of actuator value (including present value)
 
   Dvector vars_lowerbound(n_vars);
   Dvector vars_upperbound(n_vars);
@@ -252,6 +255,12 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   constraints_lowerbound[eyaw_start] = eyaw;
   constraints_upperbound[eyaw_start] = eyaw;
 
+  constraints_lowerbound[acc_constraint] = lastAccelerator;
+  constraints_upperbound[acc_constraint] = lastAccelerator;
+
+  constraints_lowerbound[steer_constraint] = lastSteering;
+  constraints_upperbound[steer_constraint] = lastSteering;
+
 
   // object that computes objective and constraints
   FG_eval fg_eval(coeffs);
@@ -272,7 +281,7 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
   options += "Sparse  true        reverse\n";
   // NOTE: Currently the solver has a maximum time limit of 0.5 seconds.
   // Change this as you see fit.
-  options += "Numeric max_cpu_time          5.5\n";
+  options += "Numeric max_cpu_time          0.5\n";
 
   // place to return solution
   CppAD::ipopt::solve_result<Dvector> solution;
@@ -298,12 +307,14 @@ vector<double> MPC::Solve(Eigen::VectorXd state, Eigen::VectorXd coeffs) {
     mpc_y.at(t) = solution.x[y_start + t];
   }
 
-  double steeringToReturn = solution.x[steer_start + 0] + solution.x[steer_start + 1] + solution.x[steer_start + 2];
-  steeringToReturn /= 3.0;
 
+  /*
+   * Using t+1 as t is the current timestep with the last actuator settings.
+   * t+1 is the next time I can do an actuator update.
+   */
+  double steeringToReturn = solution.x[steer_start + 1];
 
-  double accelerationToReturn = solution.x[acc_start + 0] + solution.x[acc_start + 1] + solution.x[acc_start + 2];
-  accelerationToReturn /= 3.0;
+  double accelerationToReturn = solution.x[acc_start + 1];
 
   lastSteering = steeringToReturn;
   lastAccelerator = accelerationToReturn;

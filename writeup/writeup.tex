@@ -59,7 +59,7 @@ e\psi_{t+1} &= \psi_t - \psi des(x_t) + \frac{v_t}{L_f} \delta_t dt
 
 dt was chosen to be 0.1s as that was the minimum time between actuation. 
 
-The following values for N was tested: 20, 15, 10, 8, 6, and 5.
+The following values for N was tested: 20, 15, 12, 10, and 8.
 
 The different values were tested with cost function tuned with N=20 and dt=0.1.
 
@@ -67,12 +67,13 @@ The yellow line is made up of the waypoints that are provided and the green line
 
 {\bf N=20:} Works well, the cars stays within the track and the green line mostly aligns with the yellow line. \\
 {\bf N=15:} Works well, the cars stays within the track and the green line mostly aligns with the yellow line.  \\
-{\bf N=10:} Works well, the cars stays within the track but the green line diverts from the yellow far ahead. \\
-{\bf N=8:} Like, 10 but the green line diverts even earlier and more. \\
-{\bf N=6:} Does not work at all, leaves track early.\\
-{\bf N=5:} Does not work at all. \\ 
+{\bf N=12:} Works well, the cars stays within the track and the green line mostly aligns with the yellow line.  \\
+{\bf N=10:} The car does occationally touch the edges of the track and I see more oscilations. \\
+{\bf N=8:} The car left the track in the first sharp turn. \\
 
 N=20 was picked as it worked without any problems and I did not see any advantage of using a lower N. There is probably an advantage is reducing the number of timestep to save on computations but I had no problems with computational time.
+
+In later subsections I will explain how the first timestep (t=0) was forced to have certain actuator values and should perhaps not be counted. In that case reduce N by one.
 
 
 \subsection{Polynomial Fitting and MPC Preprocessing}
@@ -80,14 +81,14 @@ N=20 was picked as it worked without any problems and I did not see any advantag
 
 A cubic polynomial was fitted to provided wayponts. The waypoints where first expressed in $x$ and $y$ of the vehicle coordinate system before the polynomial was fitted. 
 
-As 100ms latency before actuation existed I did one update of the state with the previously decided actuator values before providing the state at t+1 to the MPC.
-
-After reading a discussion on the forum I attempted to average the actuation of the first three timesteps of the MPC. So I avarage the suggested actuations of t+1, t+2, and t+3.
+As 100ms latency before actuation existed I decided to use t = 1 instead of t = 0 as my solution from the MPC. The actuator values for t = 0 was set to be the previously choosen values / current actuator values. This made the state at t = 1 fixed as the state and actuator values of t = 0 were given. The benefit of doing this first update inside the MPC optimizer is that I can account for the derivative of steering and acceleration values between t = 0 and t = 1. This allowed me to force a solution that were more in line with the previous one, thus creating a smoother path. When not accounting for the current actuator values in my cost function by doing the initial update outside of the MPC optimizer I got some oscilations in the steering output.
 
 \subsection{Model Predictive Control with Latency}
 \textbf{The student implements Model Predictive Control that handles a 100 millisecond latency. Student provides details on how they deal with latency.}
 
-See previous subsection, with a single state update to time t+1 before using MPC. Also taking the avarage of several timesteps of actuator values.
+See previous subsection, with a single state update to time t+1 before using MPC. Also forcing a smoother steering by accounting for the derivative in steering between t = 0 and t = 1.
+
+Also using the solution for the actuator values at t+1 (100ms in the future).
 
 \section{Simulation}
 \textbf{The vehicle must successfully drive a lap around the track. No tire may leave the drivable portion of the track surface. The car may not pop up onto ledges or roll over any surfaces that would otherwise be considered unsafe (if humans were in the vehicle). The car can't go over the curb, but, driving on the lines before the curb is ok.}
